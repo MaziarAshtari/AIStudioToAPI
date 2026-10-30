@@ -244,6 +244,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import escapeHtml from "../utils/escapeHtml";
 import I18n from "../utils/i18n";
@@ -263,6 +264,9 @@ const statusTitle = ref("");
 const statusTone = ref("info");
 const textInput = ref("");
 const textInputRef = ref(null);
+const route = useRoute();
+// Proxy selected on the status page for this VNC login (assigned to the new account when saved)
+const vncProxyId = typeof route.query.proxyId === "string" ? route.query.proxyId : "";
 
 // Initialize theme
 useTheme();
@@ -399,7 +403,7 @@ const loadVncClient = async (vncContainer, vncSurface) => {
         const initialHeight = vncContainer.clientHeight;
 
         const response = await fetch("/api/vnc/sessions", {
-            body: JSON.stringify({ height: initialHeight, width: initialWidth }),
+            body: JSON.stringify({ height: initialHeight, proxyId: vncProxyId || undefined, width: initialWidth }),
             headers: { "Content-Type": "application/json" },
             method: "POST",
         });

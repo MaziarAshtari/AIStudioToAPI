@@ -644,6 +644,8 @@ class ProxyServerSystem extends EventEmitter {
         // Close browser
         if (this.browserManager) {
             await this.browserManager.closeBrowser();
+            // Stop local proxy forwarders started for account proxies
+            await this.browserManager.accountProxyManager.closeAll();
         }
 
         // Close servers and wait for them to finish closing

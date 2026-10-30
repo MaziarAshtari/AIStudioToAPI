@@ -676,6 +676,7 @@ class ResponsesRequestConverter extends FormatConverter {
                                             this.logger.info(`[Adapter] Downloading image from URL: ${imageUrl}`);
                                             const response = await axios.get(imageUrl, {
                                                 responseType: "arraybuffer",
+                                                ...this._getAccountProxyRequestOptions(),
                                             });
                                             const imageBuffer = Buffer.from(response.data, "binary");
                                             const base64Data = imageBuffer.toString("base64");

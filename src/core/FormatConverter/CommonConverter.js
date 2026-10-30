@@ -228,6 +228,19 @@ class FormatConverter {
     }
 
     /**
+     * Axios options that route server-side downloads (made on behalf of the current account) through
+     * the account's assigned proxy. Throws if that proxy is unusable so the download never goes direct.
+     * @returns {object} Extra axios options, empty when the account has no assigned proxy
+     */
+    _getAccountProxyRequestOptions() {
+        const browserManager = this.serverSystem?.browserManager;
+        if (!browserManager?.accountProxyManager) {
+            return {};
+        }
+        return browserManager.accountProxyManager.getRequestOptionsForAuth(browserManager.currentAuthIndex);
+    }
+
+    /**
      * Accumulate Gemini content parts for one role and append them as a single
      * content turn when flushed.
      *
@@ -345,7 +358,10 @@ class FormatConverter {
             [, mimeType, data] = match;
         } else if (/^https?:\/\//.test(source)) {
             try {
-                const response = await axios.get(source, { responseType: "arraybuffer" });
+                const response = await axios.get(source, {
+                    responseType: "arraybuffer",
+                    ...this._getAccountProxyRequestOptions(),
+                });
                 data = Buffer.from(response.data, "binary").toString("base64");
                 mimeType = response.headers["content-type"]?.split(";", 1)[0];
                 if (!mimeType || mimeType === "application/octet-stream") {

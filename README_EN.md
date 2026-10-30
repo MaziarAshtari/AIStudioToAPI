@@ -97,6 +97,7 @@ Parameters:
 - `-p 7860:7860`: API server port (if using a reverse proxy, strongly consider `127.0.0.1:7860`)
 - `-v /path/to/auth:/app/configs/auth`: Mount directory containing auth files
 - `-v /path/to/data:/app/data`: Mount persistent data directory for usage statistics (`/app/data/usage-stats.jsonl`)
+- `-e PROXY_CONFIG_PATH=/app/data/proxies.json` (optional): Keep the per-account proxies configured in the web console in the mounted data directory, see [Per-Account Proxy](#-per-account-proxy-web-console)
 - `-e API_KEYS`: Comma-separated list of API keys for authentication
 - `-e TZ=America/New_York`: Timezone for logs (optional, defaults to system timezone)
 
@@ -245,22 +246,23 @@ Usage:
 
 #### 🌐 Proxy Configuration
 
-| Variable                        | Description                                                                                                                                                                                                                                                           | Default      |
-| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
-| `INITIAL_AUTH_INDEX`            | Initial authentication index to use on startup.                                                                                                                                                                                                                       | `0`          |
-| `ENABLE_AUTH_UPDATE`            | Whether to enable automatic auth credential updates. Defaults to enabled. The auth file will be automatically updated upon successful login/account switch and every 24 hours. Set to `false` to disable.                                                             | `true`       |
-| `MAX_RETRIES`                   | Maximum number of retries for failed requests (only effective for fake streaming and non-streaming).                                                                                                                                                                  | `3`          |
-| `RETRY_DELAY`                   | Delay between retries in milliseconds.                                                                                                                                                                                                                                | `2000`       |
-| `STREAM_TIMEOUT_MS`             | Timeout between real streaming chunks, in milliseconds. Maximum: `300000`.                                                                                                                                                                                            | `60000`      |
-| `FAKE_STREAM_TIMEOUT_MS`        | Timeout for fake streaming / non-streaming buffered responses, in milliseconds. Maximum: `300000`.                                                                                                                                                                    | `300000`     |
-| `SWITCH_ON_USES`                | Number of requests before automatically switching accounts (`0` to disable).                                                                                                                                                                                          | `40`         |
-| `FAILURE_THRESHOLD`             | Number of consecutive failures before switching accounts (`0` to disable).                                                                                                                                                                                            | `3`          |
-| `IMMEDIATE_SWITCH_STATUS_CODES` | HTTP status codes that trigger immediate account switching (comma-separated, set to empty to disable).                                                                                                                                                                | `429,503`    |
-| `MAX_CONTEXTS`                  | Maximum number of accounts that can be logged in simultaneously. Accounts logged in simultaneously can switch faster without re-login. Higher values consume more memory (approx: 1 account ~700MB, 2 accounts ~950MB, 3 accounts ~1100MB). Set to `0` for unlimited. | `1`          |
-| `AI_STUDIO_APP_URL`             | AI Studio app URL to open (optional), in the format `https://ai.studio/apps/<app-id>`. Leave empty to use the built-in app. [Guide](docs/en/create-ai-studio-app.md)                                                                                                  | Built-in app |
-| `HTTP_PROXY`                    | HTTP proxy address for accessing Google services.                                                                                                                                                                                                                     | None         |
-| `HTTPS_PROXY`                   | HTTPS proxy address for accessing Google services.                                                                                                                                                                                                                    | None         |
-| `NO_PROXY`                      | Comma-separated list of addresses to bypass the proxy. The project automatically bypasses local addresses (localhost, 127.0.0.1, ::, ::1 and 0.0.0.0), so manual local bypass configuration is usually not required.                                                  | None         |
+| Variable                        | Description                                                                                                                                                                                                                                                           | Default                |
+| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------- |
+| `INITIAL_AUTH_INDEX`            | Initial authentication index to use on startup.                                                                                                                                                                                                                       | `0`                    |
+| `ENABLE_AUTH_UPDATE`            | Whether to enable automatic auth credential updates. Defaults to enabled. The auth file will be automatically updated upon successful login/account switch and every 24 hours. Set to `false` to disable.                                                             | `true`                 |
+| `MAX_RETRIES`                   | Maximum number of retries for failed requests (only effective for fake streaming and non-streaming).                                                                                                                                                                  | `3`                    |
+| `RETRY_DELAY`                   | Delay between retries in milliseconds.                                                                                                                                                                                                                                | `2000`                 |
+| `STREAM_TIMEOUT_MS`             | Timeout between real streaming chunks, in milliseconds. Maximum: `300000`.                                                                                                                                                                                            | `60000`                |
+| `FAKE_STREAM_TIMEOUT_MS`        | Timeout for fake streaming / non-streaming buffered responses, in milliseconds. Maximum: `300000`.                                                                                                                                                                    | `300000`               |
+| `SWITCH_ON_USES`                | Number of requests before automatically switching accounts (`0` to disable).                                                                                                                                                                                          | `40`                   |
+| `FAILURE_THRESHOLD`             | Number of consecutive failures before switching accounts (`0` to disable).                                                                                                                                                                                            | `3`                    |
+| `IMMEDIATE_SWITCH_STATUS_CODES` | HTTP status codes that trigger immediate account switching (comma-separated, set to empty to disable).                                                                                                                                                                | `429,503`              |
+| `MAX_CONTEXTS`                  | Maximum number of accounts that can be logged in simultaneously. Accounts logged in simultaneously can switch faster without re-login. Higher values consume more memory (approx: 1 account ~700MB, 2 accounts ~950MB, 3 accounts ~1100MB). Set to `0` for unlimited. | `1`                    |
+| `AI_STUDIO_APP_URL`             | AI Studio app URL to open (optional), in the format `https://ai.studio/apps/<app-id>`. Leave empty to use the built-in app. [Guide](docs/en/create-ai-studio-app.md)                                                                                                  | Built-in app           |
+| `HTTP_PROXY`                    | HTTP proxy address for accessing Google services.                                                                                                                                                                                                                     | None                   |
+| `HTTPS_PROXY`                   | HTTPS proxy address for accessing Google services.                                                                                                                                                                                                                    | None                   |
+| `NO_PROXY`                      | Comma-separated list of addresses to bypass the proxy. The project automatically bypasses local addresses (localhost, 127.0.0.1, ::, ::1 and 0.0.0.0), so manual local bypass configuration is usually not required.                                                  | None                   |
+| `PROXY_CONFIG_PATH`             | File that stores the per-account proxies managed in the web console (relative paths are resolved from the working directory). In Docker, point it into a mounted volume such as `/app/data/proxies.json`.                                                             | `configs/proxies.json` |
 
 #### 🗒️ Other Configuration
 
@@ -293,11 +295,38 @@ To simplify the login process for multiple accounts, you can configure the `user
 
 Edit `configs/models.json` to customize available models and their settings.
 
+The built-in list includes `gemini-4-argon` (Gemini 4 Argon), which supports thinking levels and all of the model suffixes below, for example `gemini-4-argon-high` or `gemini-4-argon(minimal)-fake-search`.
+
 > 💡 **Tip:** The thinking parameter reserves the function to be set via the model suffix. It supports setting the thinking level by appending `-THINKING_LEVEL` or `(THINKING_LEVEL)` to the model name (`THINKING_LEVEL` supports `high`, `low`, `medium`, `minimal`, case-insensitive). For example: `gemini-3-flash-preview(minimal)` or `gemini-3-flash-preview-minimal`.
 >
 > Streaming mode can also be overridden with `-real` or `-fake`. This override has higher priority than the system streaming mode, but it only takes effect for streaming requests. For example: `gemini-3-flash-preview-fake`. When used together with a thinking suffix, the streaming suffix should come after the thinking suffix, for example: `gemini-3-flash-preview-minimal-fake` or `gemini-3-flash-preview(minimal)-real`.
 >
 > Web search and code execution can also be forced on with model suffixes: append `-search` for web search and `-code` for code execution. For example: `gemini-3-flash-preview-search` or `gemini-3-flash-preview-code`. When combined with other suffixes, built-in tool suffixes should come last; the full combined order is `thinking -> streaming -> built-in tools`, for example: `gemini-3-flash-preview-minimal-search`, `gemini-3-flash-preview-real-code`, or `gemini-3-flash-preview(minimal)-fake-search-code`.
+
+### 🔐 Per-Account Proxy (Web Console)
+
+Proxies can be managed in the web console's **Proxy Management** card (add / edit / delete / test) and assigned to an account with the proxy dropdown in the account list. Supported types are `HTTP`, `HTTPS` and `SOCKS5`, each with an optional username and password. **Test** fetches the outgoing IP through the proxy.
+
+- **All of the account's traffic uses its proxy:** the proxy is applied to the account's Playwright browser context (page loads, WebSockets and AI Studio requests). Only loopback addresses bypass it (`NO_PROXY` is not applied). Server-side downloads made for that account (e.g. image URLs in requests) also go through it.
+- **Authenticated SOCKS5:** Playwright cannot authenticate to SOCKS5 proxies, so the service starts a local unauthenticated forwarder on `127.0.0.1` for each such proxy and points the browser context at it.
+- **Fail closed:** if an assigned proxy is unreachable, the account is not started (there is no fallback to a direct connection). It is marked with a **Proxy error** badge and the error is logged; requests continue on other accounts according to the normal switching rules.
+- **Applying changes:** assigning, changing or removing an account's proxy (or editing a proxy's connection settings) recreates that account's browser context. The current account is briefly unavailable while it reconnects.
+- **VNC login:** when proxies exist, **Add account** asks which proxy to use. The VNC browser connects through it, and the new account is assigned to it after saving.
+- **Precedence:** assigned proxy → sticky proxy (`proxylist.txt`) → `HTTP_PROXY` / `HTTPS_PROXY`. Accounts without an assigned proxy behave exactly as before, and accounts with one never consume a `proxylist.txt` entry.
+
+Proxies and assignments are stored in `configs/proxies.json` (change it with `PROXY_CONFIG_PATH`; in Docker, use e.g. `-e PROXY_CONFIG_PATH=/app/data/proxies.json` so the file lives in the mounted data volume). Assignments are keyed by account email (or `auth-N` for unnamed accounts), so they survive restarts and auth file re-ordering. The file contains proxy passwords in plain text and is written with `600` permissions; the API never returns passwords, only a masked value. If the file exists but cannot be parsed, no account is started until it is fixed or removed.
+
+REST endpoints (web console login session required):
+
+| Method & Path                    | Description                                                                  |
+| :------------------------------- | :--------------------------------------------------------------------------- |
+| `GET /api/proxies`               | List proxies (passwords masked)                                              |
+| `POST /api/proxies`              | Create a proxy: `{ "name", "type", "host", "port", "username", "password" }` |
+| `PUT /api/proxies/:id`           | Update a proxy (omit `password` to keep the stored one)                      |
+| `DELETE /api/proxies/:id`        | Delete a proxy (returns `409` while it is assigned, unless `?force=true`)    |
+| `POST /api/proxies/:id/test`     | Test a saved proxy, returns `{ "success", "ip", "latencyMs" }`               |
+| `POST /api/proxies/test`         | Test unsaved settings (same body as create)                                  |
+| `PUT /api/accounts/:index/proxy` | Assign `{ "proxyId": "..." }` or unassign `{ "proxyId": null }`              |
 
 ### 🌐 Sticky Per-Account Proxy
 

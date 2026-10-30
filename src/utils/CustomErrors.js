@@ -58,6 +58,21 @@ class ContextAbortedError extends Error {
 }
 
 /**
+ * Custom error class for per-account proxy failures (invalid settings, unknown proxy, unreachable proxy)
+ * Carries an i18n message key and HTTP status so routes can return it directly
+ */
+class AccountProxyError extends Error {
+    constructor(message, messageKey = "proxyErrorUnknown", status = 400, details = {}) {
+        super(message);
+        this.name = "AccountProxyError";
+        this.isAccountProxyError = true;
+        this.messageKey = messageKey;
+        this.status = status;
+        this.details = details;
+    }
+}
+
+/**
  * Helper function to check if an error is an auth expiration error
  * @param {Error} error - The error to check
  * @returns {boolean} True if the error indicates auth expiration
@@ -111,9 +126,20 @@ function isContextAbortedError(error) {
     return false;
 }
 
+/**
+ * Helper function to check if an error is a per-account proxy error
+ * @param {Error} error - The error to check
+ * @returns {boolean} True if the error was raised by the account proxy manager
+ */
+function isAccountProxyError(error) {
+    return error instanceof AccountProxyError || error?.isAccountProxyError === true;
+}
+
 module.exports = {
+    AccountProxyError,
     AuthExpiredError,
     ContextAbortedError,
+    isAccountProxyError,
     isAuthExpiredError,
     isContextAbortedError,
     isReconnectCancelledError,

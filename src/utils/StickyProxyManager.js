@@ -23,6 +23,9 @@ class StickyProxyManager {
         this.proxyBypass = Object.prototype.hasOwnProperty.call(options, "proxyBypass")
             ? options.proxyBypass
             : getProxyBypassFromEnv();
+        // Accounts for which this returns true (e.g. explicitly assigned proxies) are left out of the pool
+        this.isAccountExcluded =
+            typeof options.isAccountExcluded === "function" ? options.isAccountExcluded : () => false;
         this._lastEnabledLogState = null;
         this._lastLoadedProxyCount = null;
         this._loggedBypass = false;
@@ -392,7 +395,7 @@ class StickyProxyManager {
     _getActiveAccountIdentities() {
         const indices = Array.isArray(this.authSource?.availableIndices) ? this.authSource.availableIndices : [];
         return indices
-            .filter(index => !this.authSource?.isExpired?.(index))
+            .filter(index => !this.authSource?.isExpired?.(index) && !this.isAccountExcluded(index))
             .map(index => this._getAccountIdentity(index));
     }
 
