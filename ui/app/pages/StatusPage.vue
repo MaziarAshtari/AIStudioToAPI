@@ -835,6 +835,33 @@
                                         </span>
                                     </div>
                                 </el-tooltip>
+                                <div v-if="state.proxies.length > 0 || item.proxyId" class="account-proxy" @click.stop>
+                                    <el-tooltip
+                                        v-if="item.proxyError"
+                                        :content="item.proxyError"
+                                        placement="top"
+                                        effect="dark"
+                                    >
+                                        <span class="proxy-error-badge">{{ t("proxyStatusError") }}</span>
+                                    </el-tooltip>
+                                    <el-select
+                                        :model-value="item.proxyId || ''"
+                                        class="account-proxy-select"
+                                        size="small"
+                                        :placeholder="t('proxyNone')"
+                                        :aria-label="t('accountProxy')"
+                                        :disabled="isBusy || item.isInvalid || state.assigningProxyIndex !== null"
+                                        @update:model-value="value => assignAccountProxy(item, value)"
+                                    >
+                                        <el-option :label="t('proxyNone')" value="" />
+                                        <el-option
+                                            v-for="proxy in state.proxies"
+                                            :key="proxy.id"
+                                            :label="proxy.name"
+                                            :value="proxy.id"
+                                        />
+                                    </el-select>
+                                </div>
                                 <div class="account-actions">
                                     <button
                                         class="btn-switch"
@@ -927,6 +954,164 @@
                                 {{ t("noActiveAccount") }}
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Proxy Management Section (Full Width) -->
+                <div v-if="state.serviceConnected" class="full-width-section">
+                    <div class="status-card">
+                        <h3 class="card-title">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="margin-right: 8px; vertical-align: text-bottom"
+                            >
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                                <path
+                                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                                ></path>
+                            </svg>
+                            {{ t("proxyManagement") }}
+                        </h3>
+                        <div class="action-group proxy-top-actions">
+                            <span class="proxy-hint">{{ t("proxyManagementHint") }}</span>
+                            <div class="icon-buttons">
+                                <button :title="t('proxyAdd')" @click="openProxyDialog()">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="20"
+                                        height="20"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div v-if="state.proxyStoreError" class="proxy-store-error">
+                            {{ t("proxyErrorStoreUnreadable", { reason: state.proxyStoreError }) }}
+                        </div>
+                        <el-table :data="state.proxies" :empty-text="t('proxyEmpty')" size="small" class="proxy-table">
+                            <el-table-column
+                                :label="t('proxyName')"
+                                prop="name"
+                                min-width="120"
+                                show-overflow-tooltip
+                            />
+                            <el-table-column :label="t('proxyType')" width="90">
+                                <template #default="{ row }">{{ row.type.toUpperCase() }}</template>
+                            </el-table-column>
+                            <el-table-column :label="t('proxyAddress')" min-width="170" show-overflow-tooltip>
+                                <template #default="{ row }">{{ formatProxyAddress(row) }}</template>
+                            </el-table-column>
+                            <el-table-column :label="t('proxyAuth')" min-width="120" show-overflow-tooltip>
+                                <template #default="{ row }">
+                                    {{ row.username ? `${row.username} / ${row.password || "-"}` : "-" }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('proxyAssignedAccounts')" min-width="110" show-overflow-tooltip>
+                                <template #default="{ row }">{{ getProxyAccountsText(row.id) }}</template>
+                            </el-table-column>
+                            <el-table-column :label="t('proxyLastTest')" min-width="130" show-overflow-tooltip>
+                                <template #default="{ row }">
+                                    <span v-if="state.proxyTests[row.id]?.testing" class="proxy-test-muted">
+                                        {{ t("proxyTesting") }}
+                                    </span>
+                                    <span v-else-if="state.proxyTests[row.id]?.success" class="proxy-test-ok">
+                                        {{ state.proxyTests[row.id].ip }}
+                                    </span>
+                                    <el-tooltip
+                                        v-else-if="state.proxyTests[row.id]"
+                                        :content="state.proxyTests[row.id].error"
+                                        placement="top"
+                                        effect="dark"
+                                    >
+                                        <span class="proxy-test-fail">{{ t("proxyTestFailedShort") }}</span>
+                                    </el-tooltip>
+                                    <span v-else class="proxy-test-muted">{{ t("proxyNotTested") }}</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('proxyActions')" width="120" align="right">
+                                <template #default="{ row }">
+                                    <div class="account-actions proxy-actions">
+                                        <button
+                                            :title="t('proxyTest')"
+                                            :disabled="state.proxyTests[row.id]?.testing"
+                                            @click="testSavedProxy(row)"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                width="16"
+                                                height="16"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                                            </svg>
+                                        </button>
+                                        <button :title="t('proxyEdit')" @click="openProxyDialog(row)">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                width="16"
+                                                height="16"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M12 20h9"></path>
+                                                <path
+                                                    d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+                                                ></path>
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class="btn-danger"
+                                            :title="t('proxyDelete')"
+                                            :disabled="isBusy"
+                                            @click="deleteProxy(row)"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                width="16"
+                                                height="16"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                <path
+                                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                                                ></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </template>
+                            </el-table-column>
+                        </el-table>
                     </div>
                 </div>
             </div>
@@ -2735,6 +2920,96 @@
             </div>
         </main>
 
+        <!-- Proxy add/edit dialog -->
+        <el-dialog
+            v-model="proxyDialog.visible"
+            :title="proxyDialog.id ? t('proxyEdit') : t('proxyAdd')"
+            width="min(480px, 92vw)"
+            append-to-body
+            :close-on-click-modal="false"
+        >
+            <el-form label-position="top" class="proxy-form" @submit.prevent>
+                <el-form-item :label="t('proxyName')">
+                    <el-input v-model="proxyDialog.form.name" maxlength="64" :placeholder="t('proxyNamePlaceholder')" />
+                </el-form-item>
+                <el-form-item :label="t('proxyType')" required>
+                    <el-select v-model="proxyDialog.form.type" style="width: 100%">
+                        <el-option label="HTTP" value="http" />
+                        <el-option label="HTTPS" value="https" />
+                        <el-option label="SOCKS5" value="socks5" />
+                    </el-select>
+                </el-form-item>
+                <div class="proxy-form-row">
+                    <el-form-item :label="t('proxyHost')" required class="proxy-form-host">
+                        <el-input v-model="proxyDialog.form.host" placeholder="203.0.113.10" />
+                    </el-form-item>
+                    <el-form-item :label="t('proxyPort')" required class="proxy-form-port">
+                        <el-input-number
+                            v-model="proxyDialog.form.port"
+                            :min="1"
+                            :max="65535"
+                            :controls="false"
+                            style="width: 100%"
+                        />
+                    </el-form-item>
+                </div>
+                <el-form-item :label="t('proxyUsername')">
+                    <el-input v-model="proxyDialog.form.username" autocomplete="off" />
+                </el-form-item>
+                <el-form-item :label="t('proxyPassword')">
+                    <el-input
+                        v-model="proxyDialog.form.password"
+                        type="password"
+                        show-password
+                        autocomplete="new-password"
+                        :disabled="!proxyDialog.form.username"
+                        :placeholder="proxyDialog.hasPassword ? t('proxyPasswordKeep') : ''"
+                    />
+                </el-form-item>
+                <div
+                    v-if="proxyDialog.testResult"
+                    class="proxy-test-result"
+                    :class="proxyDialog.testResult.success ? 'is-success' : 'is-error'"
+                >
+                    {{
+                        proxyDialog.testResult.success
+                            ? t("proxyTestSuccess", proxyDialog.testResult)
+                            : t("proxyTestFailed", proxyDialog.testResult)
+                    }}
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button :loading="proxyDialog.testing" @click="testProxyDraft">{{ t("proxyTest") }}</el-button>
+                <el-button @click="proxyDialog.visible = false">{{ t("cancel") }}</el-button>
+                <el-button type="primary" :loading="proxyDialog.saving" @click="saveProxy">
+                    {{ t("proxySave") }}
+                </el-button>
+            </template>
+        </el-dialog>
+
+        <!-- Proxy selection before a VNC login -->
+        <el-dialog
+            v-model="vncProxyDialog.visible"
+            :title="t('proxyVncSelectTitle')"
+            width="min(420px, 92vw)"
+            append-to-body
+        >
+            <p class="proxy-vnc-hint">{{ t("proxyVncSelectHint") }}</p>
+            <el-select
+                v-model="vncProxyDialog.proxyId"
+                style="width: 100%"
+                :placeholder="t('proxyNone')"
+                :aria-label="t('accountProxy')"
+            >
+                <el-option :label="t('proxyNone')" value="" />
+                <el-option v-for="proxy in state.proxies" :key="proxy.id" :label="proxy.name" :value="proxy.id" />
+            </el-select>
+            <template #footer>
+                <el-button @click="vncProxyDialog.visible = false">{{ t("cancel") }}</el-button>
+                <el-button type="primary" @click="confirmAddUser">{{ t("proxyVncContinue") }}</el-button>
+            </template>
+        </el-dialog>
+
         <!-- Mobile Floating Action Buttons -->
         <el-affix
             :offset="90"
@@ -3721,6 +3996,7 @@ const state = reactive({
     accountDetails: [],
     activeContextsCount: 0,
     apiKeySource: "",
+    assigningProxyIndex: null,
     browserConnected: false,
     checkUpdateEnabled: true,
     currentAuthIndex: -1,
@@ -3744,6 +4020,9 @@ const state = reactive({
     logScrollTop: 0,
     maxContexts: 1,
     maxRetries: 3,
+    proxies: [],
+    proxyStoreError: null,
+    proxyTests: {}, // proxy id -> last test result
     releaseUrl: null,
     safetySettingsThreshold: "OFF",
     selectedAccounts: new Set(), // Selected account indices
@@ -4083,7 +4362,224 @@ const getAccountDisplayName = account => {
 };
 
 const addUser = () => {
+    // Let the user pick a proxy for the VNC login; it is also assigned to the new account
+    if (state.proxies.length > 0) {
+        vncProxyDialog.proxyId = "";
+        vncProxyDialog.visible = true;
+        return;
+    }
     router.push("/auth");
+};
+
+const confirmAddUser = () => {
+    const { proxyId } = vncProxyDialog;
+    vncProxyDialog.visible = false;
+    router.push(proxyId ? { path: "/auth", query: { proxyId } } : "/auth");
+};
+
+// ==================== Proxy management ====================
+
+const createEmptyProxyForm = () => ({ host: "", name: "", password: "", port: null, type: "http", username: "" });
+
+const proxyDialog = reactive({
+    form: createEmptyProxyForm(),
+    hasPassword: false,
+    id: null,
+    saving: false,
+    testing: false,
+    testResult: null,
+    visible: false,
+});
+
+const vncProxyDialog = reactive({ proxyId: "", visible: false });
+
+const fetchProxies = async () => {
+    try {
+        const res = await fetch("/api/proxies");
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        const data = await res.json();
+        state.proxies = data.proxies || [];
+        state.proxyStoreError = data.storeError || null;
+        const proxyIds = new Set(state.proxies.map(proxy => proxy.id));
+        Object.keys(state.proxyTests).forEach(id => {
+            if (!proxyIds.has(id)) delete state.proxyTests[id];
+        });
+    } catch (err) {
+        console.error("Error fetching proxies:", err.message || err);
+    }
+};
+
+const formatProxyAddress = proxy => {
+    const host = proxy.host.includes(":") ? `[${proxy.host}]` : proxy.host;
+    return `${proxy.type}://${host}:${proxy.port}`;
+};
+
+const getProxyAccountsText = proxyId => {
+    const indices = state.accountDetails.filter(acc => acc.proxyId === proxyId).map(acc => `#${acc.index}`);
+    return indices.length > 0 ? indices.join(", ") : "-";
+};
+
+const openProxyDialog = (proxy = null) => {
+    proxyDialog.id = proxy ? proxy.id : null;
+    proxyDialog.hasPassword = Boolean(proxy?.hasPassword);
+    // Stored passwords are never sent to the browser, so the password field always starts empty
+    proxyDialog.form = proxy
+        ? {
+              host: proxy.host,
+              name: proxy.name,
+              password: "",
+              port: proxy.port,
+              type: proxy.type,
+              username: proxy.username,
+          }
+        : createEmptyProxyForm();
+    proxyDialog.testResult = null;
+    proxyDialog.visible = true;
+};
+
+const buildProxyPayload = () => {
+    const { host, name, password, port, type, username } = proxyDialog.form;
+    const payload = { host: host.trim(), name: name.trim(), port, type, username: username.trim() };
+    // When editing, an empty password keeps the stored one
+    if (password || !proxyDialog.id) {
+        payload.password = password;
+    }
+    return payload;
+};
+
+const postProxyTest = async (url, body = {}) => {
+    const res = await fetch(url, {
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? data : { error: getApiErrorMessage(data), success: false };
+};
+
+const testProxyDraft = async () => {
+    proxyDialog.testing = true;
+    proxyDialog.testResult = null;
+    try {
+        const payload = buildProxyPayload();
+        if (proxyDialog.id) {
+            payload.id = proxyDialog.id;
+        }
+        proxyDialog.testResult = await postProxyTest("/api/proxies/test", payload);
+    } catch (err) {
+        proxyDialog.testResult = { error: err.message || String(err), success: false };
+    } finally {
+        proxyDialog.testing = false;
+    }
+};
+
+const testSavedProxy = async proxy => {
+    state.proxyTests[proxy.id] = { testing: true };
+    let result;
+    try {
+        result = await postProxyTest(`/api/proxies/${encodeURIComponent(proxy.id)}/test`);
+    } catch (err) {
+        result = { error: err.message || String(err), success: false };
+    }
+    state.proxyTests[proxy.id] = result;
+    if (result.success) {
+        ElMessage.success(t("proxyTestSuccess", result));
+    } else {
+        ElMessage.error(t("proxyTestFailed", result));
+    }
+};
+
+const saveProxy = async () => {
+    proxyDialog.saving = true;
+    try {
+        const res = await fetch(
+            proxyDialog.id ? `/api/proxies/${encodeURIComponent(proxyDialog.id)}` : "/api/proxies",
+            {
+                body: JSON.stringify(buildProxyPayload()),
+                headers: { "Content-Type": "application/json" },
+                method: proxyDialog.id ? "PUT" : "POST",
+            }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            ElMessage.error(getApiErrorMessage(data));
+            return;
+        }
+        ElMessage.success(t(data.message, data));
+        proxyDialog.visible = false;
+        if (data.proxy?.id) {
+            delete state.proxyTests[data.proxy.id];
+        }
+        await Promise.all([fetchProxies(), updateContent()]);
+    } catch (err) {
+        ElMessage.error(t("proxySaveFailed", { error: err.message || err }));
+    } finally {
+        proxyDialog.saving = false;
+    }
+};
+
+const confirmWarning = message =>
+    ElMessageBox.confirm(message, {
+        cancelButtonText: t("cancel"),
+        confirmButtonText: t("ok"),
+        lockScroll: false,
+        type: "warning",
+    })
+        .then(() => true)
+        .catch(() => false);
+
+const deleteProxy = async proxy => {
+    if (!(await confirmWarning(t("proxyDeleteConfirm", { name: proxy.name })))) return;
+
+    const sendDelete = force =>
+        fetch(`/api/proxies/${encodeURIComponent(proxy.id)}${force ? "?force=true" : ""}`, { method: "DELETE" });
+    try {
+        let res = await sendDelete(false);
+        let data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.requiresConfirmation) {
+            if (!(await confirmWarning(t(data.message, data)))) return;
+            res = await sendDelete(true);
+            data = await res.json().catch(() => ({}));
+        }
+        if (!res.ok) {
+            ElMessage.error(getApiErrorMessage(data));
+            return;
+        }
+        ElMessage.success(t(data.message, data));
+        delete state.proxyTests[proxy.id];
+        await Promise.all([fetchProxies(), updateContent()]);
+    } catch (err) {
+        ElMessage.error(t("proxyDeleteFailed", { error: err.message || err }));
+    }
+};
+
+const assignAccountProxy = async (account, value) => {
+    const proxyId = value || null;
+    if ((account.proxyId || null) === proxyId) return;
+    // Applying a proxy restarts the account's browser session
+    if (account.hasContext && !(await confirmWarning(t("proxyChangeConfirm", { index: account.index })))) return;
+
+    state.assigningProxyIndex = account.index;
+    try {
+        const res = await fetch(`/api/accounts/${account.index}/proxy`, {
+            body: JSON.stringify({ proxyId }),
+            headers: { "Content-Type": "application/json" },
+            method: "PUT",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            ElMessage.success(t(data.message, data));
+        } else {
+            ElMessage.error(getApiErrorMessage(data));
+        }
+    } catch (err) {
+        ElMessage.error(t("proxyAssignFailed", { error: err.message || err }));
+    } finally {
+        state.assigningProxyIndex = null;
+        updateContent();
+    }
 };
 
 // Delete account by index
@@ -5018,7 +5514,7 @@ onMounted(() => {
     syncStatsFiltersViewport(statsFiltersMobileMediaQuery);
     statsFiltersMobileMediaQuery.addEventListener("change", syncStatsFiltersViewport);
 
-    Promise.all([updateContent(), fetchUsageStats()]).finally(scheduleUpdate);
+    Promise.all([updateContent(), fetchUsageStats(), fetchProxies()]).finally(scheduleUpdate);
 
     // Check for updates once on initial load
     checkForUpdates();
@@ -5626,6 +6122,128 @@ watchEffect(() => {
     text-align: center;
     color: @text-secondary;
     font-size: 0.9rem;
+}
+
+/* Proxy management */
+.account-proxy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin: 0 8px;
+}
+
+.account-proxy-select {
+    width: 140px;
+}
+
+.proxy-error-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: @error-color;
+    color: @text-on-primary;
+    border-radius: 12px;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.proxy-top-actions {
+    margin-bottom: 16px;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+}
+
+.proxy-hint {
+    color: @text-secondary;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.proxy-store-error {
+    color: @error-color;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+}
+
+.proxy-table {
+    width: 100%;
+}
+
+.proxy-actions {
+    justify-content: flex-end;
+}
+
+.proxy-test-ok {
+    color: @success-color;
+    font-family: @font-family-mono;
+}
+
+.proxy-test-fail {
+    color: @error-color;
+    cursor: help;
+}
+
+.proxy-test-muted {
+    color: @text-secondary;
+}
+
+.proxy-form-row {
+    display: flex;
+    gap: 12px;
+}
+
+.proxy-form-host {
+    flex: 1;
+    min-width: 0;
+}
+
+.proxy-form-port {
+    width: 120px;
+    flex-shrink: 0;
+}
+
+.proxy-test-result {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    word-break: break-word;
+
+    &.is-success {
+        background: rgba(var(--color-success-rgb), 0.15);
+        color: @success-color;
+    }
+
+    &.is-error {
+        background: rgba(var(--color-error-rgb), 0.15);
+        color: @error-color;
+    }
+}
+
+.proxy-vnc-hint {
+    margin: 0 0 12px;
+    color: @text-secondary;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+@media (max-width: 599px) {
+    .account-list-item {
+        flex-wrap: wrap;
+    }
+
+    .account-proxy {
+        order: 3;
+        width: 100%;
+        margin: 8px 0 0;
+    }
+
+    .account-proxy-select {
+        flex: 1;
+    }
+
+    .proxy-top-actions {
+        flex-wrap: wrap;
+    }
 }
 
 .settings-switches {

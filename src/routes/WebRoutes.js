@@ -10,6 +10,7 @@ const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
 const path = require("path");
 const AuthRoutes = require("./AuthRoutes");
+const ProxyRoutes = require("./ProxyRoutes");
 const StatusRoutes = require("./StatusRoutes");
 
 /**
@@ -28,6 +29,7 @@ class WebRoutes {
         // Initialize specialized route handlers
         this.authRoutes = new AuthRoutes(serverSystem);
         this.statusRoutes = new StatusRoutes(serverSystem);
+        this.proxyRoutes = new ProxyRoutes(serverSystem);
     }
 
     /**
@@ -60,7 +62,9 @@ class WebRoutes {
 
         // Setup all route handlers
         this.authRoutes.setupRoutes(app);
-        this.statusRoutes.setupRoutes(app, this.authRoutes.isAuthenticated.bind(this.authRoutes));
+        const isAuthenticated = this.authRoutes.isAuthenticated.bind(this.authRoutes);
+        this.statusRoutes.setupRoutes(app, isAuthenticated);
+        this.proxyRoutes.setupRoutes(app, isAuthenticated);
     }
 }
 

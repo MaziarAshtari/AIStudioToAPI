@@ -11,6 +11,7 @@ const { firefox } = require("playwright");
 const os = require("os");
 
 const { parseProxyFromEnv } = require("../utils/ProxyUtils");
+const AccountProxyManager = require("../utils/AccountProxyManager");
 const StickyProxyManager = require("../utils/StickyProxyManager");
 const {
     AuthExpiredError,
@@ -34,7 +35,11 @@ class BrowserManager {
         this.logger = logger;
         this.config = config;
         this.authSource = authSource;
-        this.stickyProxyManager = new StickyProxyManager(logger, authSource);
+        this.accountProxyManager = new AccountProxyManager(logger, authSource);
+        this.stickyProxyManager = new StickyProxyManager(logger, authSource, {
+            // Accounts with an explicitly assigned proxy never consume a proxylist.txt entry
+            isAccountExcluded: authIndex => this.accountProxyManager.hasAssignment(authIndex),
+        });
         this.stickyProxyManager.isEnabled();
         this.browser = null;
 
@@ -1317,15 +1322,23 @@ class BrowserManager {
     }
 
     async launchBrowserForVNC(extraArgs = {}) {
-        const stickyProxy = this.stickyProxyManager.reserveProxyForNewAccount("VNC account binding");
+        // A proxy selected for the VNC session (proxies.json) takes precedence and fails closed if unusable
+        const accountProxy = extraArgs.proxyId
+            ? await this.accountProxyManager.resolveProxyById(extraArgs.proxyId)
+            : null;
+        const stickyProxy = accountProxy
+            ? null
+            : this.stickyProxyManager.reserveProxyForNewAccount("VNC account binding");
         this.logger.info("🚀 [VNC] Launching a new, separate, headful browser instance for VNC session...");
         const browserExecutablePath = this._getBrowserExecutablePath();
         if (!fs.existsSync(browserExecutablePath)) {
             throw new Error(`Browser executable not found at path: ${browserExecutablePath}`);
         }
 
-        const proxyConfig = stickyProxy ? stickyProxy.proxy : parseProxyFromEnv();
-        if (proxyConfig) {
+        const proxyConfig = accountProxy ? accountProxy.proxy : stickyProxy ? stickyProxy.proxy : parseProxyFromEnv();
+        if (accountProxy) {
+            this.logger.info(`[VNC] Launching browser with selected account proxy ${accountProxy.display}`);
+        } else if (proxyConfig) {
             this.logger.info(
                 stickyProxy
                     ? `[VNC] Launching browser with proxy: ${stickyProxy.display}`
@@ -1367,7 +1380,12 @@ class BrowserManager {
         this.logger.info("✅ [VNC] VNC browser context successfully created.");
 
         // Return both the browser and context so the caller can manage their lifecycle.
-        return { browser: vncBrowser, context, stickyProxy };
+        return {
+            accountProxyId: accountProxy ? accountProxy.proxyId : null,
+            browser: vncBrowser,
+            context,
+            stickyProxy,
+        };
     }
 
     /**
@@ -2014,6 +2032,57 @@ class BrowserManager {
     }
 
     /**
+     * Resolve the proxy for an account's browser context.
+     * Priority: assigned account proxy (proxies.json) > sticky proxy (proxylist.txt) > environment proxy.
+     * If the assigned proxy cannot be used, initialization fails instead of falling back to another route.
+     * @param {number} authIndex - The auth index being initialized
+     * @returns {Promise<Object|null>} Playwright proxy settings, or null for a direct connection
+     */
+    async _resolveContextProxyConfig(authIndex) {
+        let accountProxy;
+        try {
+            accountProxy = await this.accountProxyManager.resolveContextProxy(authIndex);
+        } catch (error) {
+            this.accountProxyManager.markAccountError(authIndex, error.message);
+            this.logger.error(
+                `❌ [Context#${authIndex}] Assigned proxy is unavailable, refusing to start this account without it: ${error.message}`
+            );
+            throw error;
+        }
+        if (accountProxy) {
+            this.logger.info(`[Context#${authIndex}] Using assigned proxy ${accountProxy.display}`);
+            return accountProxy.proxy;
+        }
+
+        const stickyProxy = this.stickyProxyManager.getProxyForAuth(authIndex);
+        if (stickyProxy) {
+            this.logger.info(
+                `[Context#${authIndex}] Using sticky proxy for account "${stickyProxy.accountKey}": ${stickyProxy.display}`
+            );
+            return stickyProxy.proxy;
+        }
+        return parseProxyFromEnv();
+    }
+
+    /**
+     * Mark an account as errored when its assigned proxy fails while loading pages
+     * @param {number} authIndex - The affected auth index
+     * @param {Error} error - The page/navigation error
+     */
+    _markAccountProxyErrorIfNeeded(authIndex, error) {
+        if (
+            !this.accountProxyManager.hasAssignment(authIndex) ||
+            !this.accountProxyManager.isProxyNetworkError(error)
+        ) {
+            return;
+        }
+        this.accountProxyManager.markAccountError(authIndex, error.message);
+        this.logger.error(
+            `❌ [Context#${authIndex}] Assigned proxy failed, account marked as errored: ${error.message}`
+        );
+    }
+
+    /**
      * Wait for a background context initialization to complete
      * @param {number} authIndex - The auth index to wait for
      * @param {number} timeoutMs - Timeout in milliseconds
@@ -2048,13 +2117,7 @@ class BrowserManager {
             // between concurrent init/reconnect operations on different accounts
             this._wsInitState.set(authIndex, { failed: false, success: false });
 
-            const stickyProxy = this.stickyProxyManager.getProxyForAuth(authIndex);
-            const proxyConfig = stickyProxy ? stickyProxy.proxy : parseProxyFromEnv();
-            if (stickyProxy) {
-                this.logger.info(
-                    `[Context#${authIndex}] Using sticky proxy for account "${stickyProxy.accountKey}": ${stickyProxy.display}`
-                );
-            }
+            const proxyConfig = await this._resolveContextProxyConfig(authIndex);
             const storageStateObject = this.authSource.getAuth(authIndex);
             if (!storageStateObject) {
                 throw new Error(`Failed to get or parse auth source for index ${authIndex}.`);
@@ -2196,6 +2259,7 @@ class BrowserManager {
             } else {
                 this._throwIfContextInitAborted(authIndex, isBackgroundTask);
             }
+            this.accountProxyManager.clearAccountError(authIndex);
 
             // Update auth file
             await this._updateAuthFile(authIndex);
@@ -2216,6 +2280,7 @@ class BrowserManager {
                 // Auth is already marked as expired in _checkPageStatusAndErrors
             } else {
                 this.logger.error(`❌ [Browser] Context initialization failed for index ${authIndex}, cleaning up...`);
+                this._markAccountProxyErrorIfNeeded(authIndex, error);
             }
 
             // Save debug artifacts before closing the page (only for non-abort errors)
@@ -2522,6 +2587,7 @@ class BrowserManager {
             }
 
             this._sendActiveTrigger("[Reconnect]", page);
+            this.accountProxyManager.clearAccountError(targetAuthIndex);
 
             // [Auth Update] Save the refreshed cookies to the auth file immediately
             await this._updateAuthFile(targetAuthIndex);
@@ -2566,6 +2632,7 @@ class BrowserManager {
             this.logger.error(
                 `❌ [Reconnect] Lightweight reconnect failed for account #${targetAuthIndex}: ${error.message}`
             );
+            this._markAccountProxyErrorIfNeeded(targetAuthIndex, error);
             await this._saveDebugArtifacts("reconnect_failed", targetAuthIndex, page);
             // Keep context for non-expired failures - next request will try to refresh the page
             return false;

@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const net = require("net");
 const { spawn } = require("child_process");
+const { isAccountProxyError } = require("../utils/CustomErrors");
 
 /**
  * CreateAuth Manager
@@ -335,16 +336,20 @@ class CreateAuth {
             checkAborted();
 
             this.logger.info("[VNC] Launching browser for VNC session...");
-            const { browser, context, stickyProxy } = await this._runWithSignal(
+            const requestedProxyId =
+                typeof req.body?.proxyId === "string" && req.body.proxyId.trim() ? req.body.proxyId.trim() : null;
+            const { accountProxyId, browser, context, stickyProxy } = await this._runWithSignal(
                 this.serverSystem.browserManager.launchBrowserForVNC({
                     env: { DISPLAY: display },
                     isMobile,
+                    proxyId: requestedProxyId,
                 }),
                 signal
             );
             sessionResources.browser = browser;
             sessionResources.context = context;
             sessionResources.stickyProxy = stickyProxy;
+            sessionResources.accountProxyId = accountProxyId;
 
             browser.once("disconnected", () => {
                 this.logger.warn("[VNC] Browser disconnected. Triggering cleanup.");
@@ -431,9 +436,18 @@ class CreateAuth {
                 await this._cleanupVncSession("startup_error", sessionResources);
                 if (!res.headersSent) {
                     const isStickyProxyError = String(error.message || "").includes("Sticky proxy enabled");
-                    res.status(500).json(
-                        isStickyProxyError ? { error: error.message } : { message: "errorVncStartFailed" }
-                    );
+                    if (isAccountProxyError(error)) {
+                        // The selected proxy is unusable: report it instead of starting without it
+                        res.status(error.status).json({
+                            ...error.details,
+                            error: error.message,
+                            message: error.messageKey,
+                        });
+                    } else {
+                        res.status(500).json(
+                            isStickyProxyError ? { error: error.message } : { message: "errorVncStartFailed" }
+                        );
+                    }
                 }
             }
         } finally {
@@ -454,7 +468,7 @@ class CreateAuth {
         }
 
         let { accountName } = req.body;
-        const { context, page, stickyProxy } = this.vncSession;
+        const { accountProxyId, context, page, stickyProxy } = this.vncSession;
         // Capture session ref to prevent global change affecting us
         const sessionRef = this.vncSession;
 
@@ -521,6 +535,18 @@ class CreateAuth {
                     accountName,
                     nextAuthIndex
                 );
+            }
+
+            // Keep the proxy used for the VNC login bound to the new account
+            if (accountProxyId) {
+                try {
+                    this.serverSystem.browserManager.accountProxyManager.assignProxy(nextAuthIndex, accountProxyId);
+                    this.logger.info(`[VNC] Assigned the VNC session proxy to new account #${nextAuthIndex}.`);
+                } catch (error) {
+                    this.logger.warn(
+                        `[VNC] Failed to assign the VNC session proxy to account #${nextAuthIndex}: ${error.message}`
+                    );
+                }
             }
 
             res.json({

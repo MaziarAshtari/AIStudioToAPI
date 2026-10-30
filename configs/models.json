@@ -352,6 +352,25 @@
             "thinking": true
         },
         {
+            "name": "models/gemini-4-argon",
+            "version": "4-argon",
+            "displayName": "Gemini 4 Argon",
+            "description": "Gemini 4 Argon",
+            "inputTokenLimit": 1048576,
+            "outputTokenLimit": 65536,
+            "supportedGenerationMethods": [
+                "generateContent",
+                "countTokens",
+                "createCachedContent",
+                "batchGenerateContent"
+            ],
+            "temperature": 1.0,
+            "topP": 0.95,
+            "topK": 64,
+            "maxTemperature": 2.0,
+            "thinking": true
+        },
+        {
             "name": "models/lyria-3-clip-preview",
             "version": "lyria-3-clip-preview",
             "displayName": "Lyria 3 Clip Preview",

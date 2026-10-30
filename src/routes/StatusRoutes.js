@@ -998,8 +998,21 @@ class StatusRoutes {
             const isExpired = expiredIndices.includes(index);
 
             const hasContext = browserManager.contexts.has(index);
+            const { proxyError, proxyId, proxyName } = browserManager.accountProxyManager.getAccountProxyInfo(index);
 
-            return { canonicalIndex, hasContext, index, isDuplicate, isExpired, isInvalid, isRotation, name };
+            return {
+                canonicalIndex,
+                hasContext,
+                index,
+                isDuplicate,
+                isExpired,
+                isInvalid,
+                isRotation,
+                name,
+                proxyError,
+                proxyId,
+                proxyName,
+            };
         });
 
         const currentAuthIndex = requestHandler.currentAuthIndex;

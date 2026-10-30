@@ -97,6 +97,7 @@ docker run -d \
 - `-p 7860:7860`：API 服务器端口（如果使用反向代理，强烈建议改成 `127.0.0.1:7860`）
 - `-v /path/to/auth:/app/configs/auth`：挂载包含认证文件的目录
 - `-v /path/to/data:/app/data`：挂载统计数据持久化目录（`/app/data/usage-stats.jsonl`）
+- `-e PROXY_CONFIG_PATH=/app/data/proxies.json`（可选）：将网页控制台中配置的账号代理保存在已挂载的数据目录中，详见[账号独立代理](#-账号独立代理网页控制台)
 - `-e API_KEYS`：用于身份验证的 API 密钥列表（使用逗号分隔）
 - `-e TZ=Asia/Shanghai`：时区设置（可选，默认使用系统时区）
 
@@ -247,22 +248,23 @@ services:
 
 #### 🌐 代理配置
 
-| 变量名                          | 描述                                                                                                                                                                | 默认值    |
-| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------- |
-| `INITIAL_AUTH_INDEX`            | 启动时使用的初始身份验证索引。                                                                                                                                      | `0`       |
-| `ENABLE_AUTH_UPDATE`            | 是否启用自动保存凭证更新。默认为启用状态，将在每次登录/切换账号成功时以及每 24 小时自动更新 auth 文件。设为 `false` 禁用。                                          | `true`    |
-| `MAX_RETRIES`                   | 请求失败后的最大重试次数（仅对假流式和非流式生效）。                                                                                                                | `3`       |
-| `RETRY_DELAY`                   | 两次重试之间的间隔（毫秒）。                                                                                                                                        | `2000`    |
-| `STREAM_TIMEOUT_MS`             | 真流式响应相邻数据块之间的超时时间（毫秒），最大 `300000`。                                                                                                         | `60000`   |
-| `FAKE_STREAM_TIMEOUT_MS`        | 假流式/非流式缓冲响应的超时时间（毫秒），最大 `300000`。                                                                                                            | `300000`  |
-| `SWITCH_ON_USES`                | 自动切换帐户前允许的请求次数（设为 `0` 禁用）。                                                                                                                     | `40`      |
-| `FAILURE_THRESHOLD`             | 切换帐户前允许的连续失败次数（设为 `0` 禁用）。                                                                                                                     | `3`       |
-| `IMMEDIATE_SWITCH_STATUS_CODES` | 触发立即切换帐户的 HTTP 状态码（逗号分隔，设为空值以禁用）。                                                                                                        | `429,503` |
-| `MAX_CONTEXTS`                  | 最大同时登录的账号数量。同时登录的账号切换更快，无需重新登录。数值越大内存消耗越高（约：1 个账号 ~700MB，2 个账号 ~950MB，3 个账号 ~1100MB）。设为 `0` 表示无限制。 | `1`       |
-| `AI_STUDIO_APP_URL`             | 要打开的 AI Studio 应用地址（可选），格式为 `https://ai.studio/apps/<应用 ID>`；留空时使用内置应用。[教程](docs/zh/create-ai-studio-app.md)                         | 内置应用  |
-| `HTTP_PROXY`                    | 用于访问 Google 服务的 HTTP 代理地址。                                                                                                                              | 无        |
-| `HTTPS_PROXY`                   | 用于访问 Google 服务的 HTTPS 代理地址。                                                                                                                             | 无        |
-| `NO_PROXY`                      | 不经过代理的地址列表（逗号分隔）。项目已内置自动绕过本地地址（localhost, 127.0.0.1, ::, ::1, 0.0.0.0），通常无需手动配置本地绕过。                                  | 无        |
+| 变量名                          | 描述                                                                                                                                                                | 默认值                 |
+| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------- |
+| `INITIAL_AUTH_INDEX`            | 启动时使用的初始身份验证索引。                                                                                                                                      | `0`                    |
+| `ENABLE_AUTH_UPDATE`            | 是否启用自动保存凭证更新。默认为启用状态，将在每次登录/切换账号成功时以及每 24 小时自动更新 auth 文件。设为 `false` 禁用。                                          | `true`                 |
+| `MAX_RETRIES`                   | 请求失败后的最大重试次数（仅对假流式和非流式生效）。                                                                                                                | `3`                    |
+| `RETRY_DELAY`                   | 两次重试之间的间隔（毫秒）。                                                                                                                                        | `2000`                 |
+| `STREAM_TIMEOUT_MS`             | 真流式响应相邻数据块之间的超时时间（毫秒），最大 `300000`。                                                                                                         | `60000`                |
+| `FAKE_STREAM_TIMEOUT_MS`        | 假流式/非流式缓冲响应的超时时间（毫秒），最大 `300000`。                                                                                                            | `300000`               |
+| `SWITCH_ON_USES`                | 自动切换帐户前允许的请求次数（设为 `0` 禁用）。                                                                                                                     | `40`                   |
+| `FAILURE_THRESHOLD`             | 切换帐户前允许的连续失败次数（设为 `0` 禁用）。                                                                                                                     | `3`                    |
+| `IMMEDIATE_SWITCH_STATUS_CODES` | 触发立即切换帐户的 HTTP 状态码（逗号分隔，设为空值以禁用）。                                                                                                        | `429,503`              |
+| `MAX_CONTEXTS`                  | 最大同时登录的账号数量。同时登录的账号切换更快，无需重新登录。数值越大内存消耗越高（约：1 个账号 ~700MB，2 个账号 ~950MB，3 个账号 ~1100MB）。设为 `0` 表示无限制。 | `1`                    |
+| `AI_STUDIO_APP_URL`             | 要打开的 AI Studio 应用地址（可选），格式为 `https://ai.studio/apps/<应用 ID>`；留空时使用内置应用。[教程](docs/zh/create-ai-studio-app.md)                         | 内置应用               |
+| `HTTP_PROXY`                    | 用于访问 Google 服务的 HTTP 代理地址。                                                                                                                              | 无                     |
+| `HTTPS_PROXY`                   | 用于访问 Google 服务的 HTTPS 代理地址。                                                                                                                             | 无                     |
+| `NO_PROXY`                      | 不经过代理的地址列表（逗号分隔）。项目已内置自动绕过本地地址（localhost, 127.0.0.1, ::, ::1, 0.0.0.0），通常无需手动配置本地绕过。                                  | 无                     |
+| `PROXY_CONFIG_PATH`             | 网页控制台中管理的账号代理配置文件路径（相对路径基于工作目录）。Docker 部署时建议指向已挂载的目录，例如 `/app/data/proxies.json`。                                  | `configs/proxies.json` |
 
 #### 🗒️ 其他配置
 
@@ -295,11 +297,38 @@ services:
 
 编辑 `configs/models.json` 以自定义可用模型及其设置。
 
+内置列表已包含 `gemini-4-argon`（Gemini 4 Argon），支持思考等级以及下方所有模型后缀，例如 `gemini-4-argon-high` 或 `gemini-4-argon(minimal)-fake-search`。
+
 > 💡 **提示：** 思考参数预留了通过模型后缀名来设置的功能，支持在模型名后面通过 `-THINKING_LEVEL` 或 `(THINKING_LEVEL)` 来设置（`THINKING_LEVEL` 支持 `high`、`low`、`medium`、`minimal`，不区分大小写）。例如：`gemini-3-flash-preview(minimal)` 或 `gemini-3-flash-preview-minimal`。
 >
 > 真假流式也支持通过模型名后缀覆盖，支持追加 `-real` 或 `-fake`。该后缀优先级高于系统的真假流式，但只会在流式请求中生效。例如：`gemini-3-flash-preview-fake`。若和思考后缀同时使用，真假流后缀应放在思考后缀之后，例如：`gemini-3-flash-preview-minimal-fake` 或 `gemini-3-flash-preview(minimal)-real`。
 >
 > 联网搜索和代码执行也支持通过模型名后缀强制开启：联网搜索追加 `-search`，代码执行追加 `-code`。例如：`gemini-3-flash-preview-search` 或 `gemini-3-flash-preview-code`。若和其他后缀同时使用，内置工具后缀放在最后；完整组合顺序为“思考 -> 流式 -> 内置工具”，例如：`gemini-3-flash-preview-minimal-search`、`gemini-3-flash-preview-real-code` 或 `gemini-3-flash-preview(minimal)-fake-search-code`。
+
+### 🔐 账号独立代理（网页控制台）
+
+可以在网页控制台的 **代理管理** 卡片中添加、编辑、删除和测试代理，并通过账号列表中的代理下拉框为账号分配代理。支持 `HTTP`、`HTTPS`、`SOCKS5` 三种类型，用户名和密码均为可选。**测试** 会通过代理获取出口 IP。
+
+- **账号的所有流量都走其代理：** 代理会应用到该账号的 Playwright 浏览器上下文（页面加载、WebSocket 以及 AI Studio 请求），只有本地回环地址会绕过代理（不应用 `NO_PROXY`）。服务端代表该账号发起的下载（例如请求中的图片 URL）也会通过该代理。
+- **带认证的 SOCKS5：** Playwright 不支持 SOCKS5 认证，服务会为每个此类代理在 `127.0.0.1` 启动一个无需认证的本地转发，并让浏览器上下文连接该转发。
+- **失败即关闭（Fail closed）：** 如果分配的代理无法连接，该账号不会启动（不会回退到直连），账号会显示 **代理异常** 标记并记录日志；请求会按正常切换规则继续使用其他账号。
+- **变更生效：** 为账号分配、更改或移除代理（或修改代理的连接参数）时，会重建该账号的浏览器上下文，当前账号在重连期间会短暂不可用。
+- **VNC 登录：** 存在代理时，点击 **添加账号** 会询问要使用的代理。VNC 浏览器会通过该代理登录，保存后新账号会自动分配该代理。
+- **优先级：** 分配的代理 → 账号固定代理（`proxylist.txt`）→ `HTTP_PROXY` / `HTTPS_PROXY`。未分配代理的账号行为与之前完全一致；已分配代理的账号不会占用 `proxylist.txt` 中的代理。
+
+代理及分配关系保存在 `configs/proxies.json`（可通过 `PROXY_CONFIG_PATH` 修改；Docker 部署可使用 `-e PROXY_CONFIG_PATH=/app/data/proxies.json`，将其保存在已挂载的数据目录中）。分配关系以账号邮箱为键（未命名账号使用 `auth-N`），因此重启或认证文件重新排序后依然有效。该文件以明文保存代理密码，并以 `600` 权限写入；API 不会返回明文密码，只返回掩码。如果该文件存在但无法解析，在修复或删除之前不会启动任何账号。
+
+REST 接口（需要网页控制台登录会话）：
+
+| 方法与路径                       | 说明                                                                   |
+| :------------------------------- | :--------------------------------------------------------------------- |
+| `GET /api/proxies`               | 列出代理（密码已掩码）                                                 |
+| `POST /api/proxies`              | 创建代理：`{ "name", "type", "host", "port", "username", "password" }` |
+| `PUT /api/proxies/:id`           | 更新代理（省略 `password` 则保留原密码）                               |
+| `DELETE /api/proxies/:id`        | 删除代理（仍被分配时返回 `409`，除非使用 `?force=true`）               |
+| `POST /api/proxies/:id/test`     | 测试已保存的代理，返回 `{ "success", "ip", "latencyMs" }`              |
+| `POST /api/proxies/test`         | 测试未保存的配置（请求体与创建相同）                                   |
+| `PUT /api/accounts/:index/proxy` | 分配 `{ "proxyId": "..." }` 或取消分配 `{ "proxyId": null }`           |
 
 ### 🌐 账号固定代理
 

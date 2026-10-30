@@ -324,7 +324,10 @@ class ClaudeRequestConverter extends FormatConverter {
                             } else if (source.type === "url") {
                                 try {
                                     this.logger.info(`[Adapter] Downloading image from URL: ${source.url}`);
-                                    const response = await axios.get(source.url, { responseType: "arraybuffer" });
+                                    const response = await axios.get(source.url, {
+                                        responseType: "arraybuffer",
+                                        ...this._getAccountProxyRequestOptions(),
+                                    });
                                     const imageBuffer = Buffer.from(response.data, "binary");
                                     const base64Data = imageBuffer.toString("base64");
                                     let mimeType = response.headers["content-type"];

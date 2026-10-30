@@ -35,6 +35,9 @@ const _getBypassEntries = () => {
 
 const getProxyBypassFromEnv = () => _getBypassEntries().join(",");
 
+// Loopback-only bypass list (ignores NO_PROXY) for proxies that must not leak traffic outside the proxy.
+const getLocalProxyBypass = () => DEFAULT_BYPASS.join(",");
+
 // Redact credentials in proxy strings, without needing valid URL parsing.
 // - `scheme://user:pass@host` -> `scheme://***@host`
 // - `user:pass@host:port` -> `***@host:port`
@@ -112,4 +115,4 @@ const getProxySummaryFromEnv = () => {
     }
 };
 
-module.exports = { getProxyBypassFromEnv, getProxySummaryFromEnv, parseProxyFromEnv };
+module.exports = { getLocalProxyBypass, getProxyBypassFromEnv, getProxySummaryFromEnv, parseProxyFromEnv };
